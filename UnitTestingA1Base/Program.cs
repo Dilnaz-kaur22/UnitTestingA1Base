@@ -19,7 +19,7 @@ BusinessLogicLayer bll = new BusinessLogicLayer(appStorage);
 /*
  * All methods should return a NotFound response code if a search using a Primary Key does not find any results.
  * 
- * Otherwise, the method should return an empty collection of the resource indicated in the root directory of the request.
+ * Otherwise, the method should return an empty collection of the resource indicated in the root directory of the request,hh.
  * 
  * All methods with a name and id parameter can use either. 
  * 
@@ -33,11 +33,34 @@ BusinessLogicLayer bll = new BusinessLogicLayer(appStorage);
 /// </summary>
 app.MapGet("/recipes/byIngredient", (string? name, int? id) =>
 {
-    try 
+    try
     {
-        HashSet<Recipe> recipes = bll.GetRecipesByIngredient(id, name);
+        HashSet<Recipe> recipes;
+
+        if (id.HasValue)
+        {
+            Ingredient ingredient = appStorage.Ingredients.First(i => i.Id == id);
+            HashSet<RecipeIngredient> recipeIngredients = appStorage.RecipeIngredients
+                .Where(ri => ri.IngredientId == ingredient.Id)
+                .ToHashSet();
+            recipes = appStorage.Recipes
+                .Where(r => recipeIngredients.Any(ri => ri.RecipeId == r.Id))
+                .ToHashSet();
+        }
+        else if (!string.IsNullOrWhiteSpace(name))
+        {
+            recipes = appStorage.Recipes
+                .Where(r => r.Name.Contains(name, StringComparison.OrdinalIgnoreCase))
+                .ToHashSet();
+        }
+        else
+        {
+            recipes = new HashSet<Recipe>(); // No filter provided.
+        }
+
         return Results.Ok(recipes);
-    } catch(Exception ex)
+    }
+    catch (Exception ex)
     {
         return Results.NotFound();
     }
@@ -48,7 +71,48 @@ app.MapGet("/recipes/byIngredient", (string? name, int? id) =>
 /// </summary>
 app.MapGet("/recipes/byDiet", (string name, int id) =>
 {
+    try
+    {
+        HashSet<Recipe> recipes;
 
+        if (id > 0)
+        {
+            DietaryRestriction restriction = appStorage.DietaryRestrictions.FirstOrDefault(dr => dr.Id == id);
+            if (restriction != null)
+            {
+                HashSet<Ingredient> restrictedIngredients = appStorage.IngredientRestrictions
+                    .Where(ir => ir.DietaryRestrictionId == restriction.Id)
+                    .Select(ir => appStorage.Ingredients.First(i => i.Id == ir.IngredientId))
+                    .ToHashSet();
+
+                recipes = appStorage.Recipes
+                    .Where(r => !r.RecipeIngredients
+                        .Any(ri => restrictedIngredients
+                            .Contains(appStorage.Ingredients.First(i => i.Id == ri.IngredientId))))
+                    .ToHashSet();
+            }
+            else
+            {
+                return Results.NotFound();
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(name))
+        {
+            recipes = appStorage.Recipes
+                .Where(r => r.Name.Contains(name, StringComparison.OrdinalIgnoreCase))
+                .ToHashSet();
+        }
+        else
+        {
+            recipes = new HashSet<Recipe>(); // No filter provided.
+        }
+
+        return Results.Ok(recipes);
+    }
+    catch (Exception ex)
+    {
+        return Results.NotFound();
+    }
 });
 
 ///<summary>
